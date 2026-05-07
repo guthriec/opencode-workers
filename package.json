@@ -15,7 +15,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/guthriec/opencode-workers/issues"
   },
@@ -29,6 +29,7 @@
     "oc-work": "dist/src/index.js"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "^1.14.41",
     "commander": "^14.0.3"
   }
 }

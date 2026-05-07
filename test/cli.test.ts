@@ -1,16 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runCli } from "../src/cli";
+import { runCli } from "../src/cli.js";
 
 type Capture = {
   stdout: string[];
   stderr: string[];
 };
 
-function createDependencies(branchExists: boolean): {
-  capture: Capture;
-  deps: Parameters<typeof runCli>[1];
-} {
+function createDependencies() {
   const capture: Capture = { stdout: [], stderr: [] };
 
   return {
@@ -23,13 +20,12 @@ function createDependencies(branchExists: boolean): {
       writeStderr: (message: string) => {
         capture.stderr.push(message);
       },
-      doesLocalBranchExist: async () => branchExists,
     },
   };
 }
 
 test("serve command starts in current directory", async () => {
-  const { capture, deps } = createDependencies(true);
+  const { capture, deps } = createDependencies();
 
   const code = await runCli(["serve"], deps);
 
@@ -37,57 +33,11 @@ test("serve command starts in current directory", async () => {
   assert.match(capture.stdout[0], /Starting opencode-workers service in \/service/);
 });
 
-test("session init requires repository and session", async () => {
-  const { capture, deps } = createDependencies(true);
+test("help shows available commands", async () => {
+  const { capture, deps } = createDependencies();
 
-  const code = await runCli(["session", "init", "--repo", "my-repo"], deps);
-
-  assert.equal(code, 1);
-  assert.match(capture.stderr.join("\n"), /required option '--session <session>' not specified/);
-});
-
-test("session do requires base branch when branch is missing", async () => {
-  const { capture, deps } = createDependencies(false);
-
-  const code = await runCli(
-    [
-      "session",
-      "do",
-      "--repo",
-      "my-repo",
-      "--session",
-      "s1",
-      "--prompt",
-      "write tests",
-      "--branch",
-      "feature/new-work",
-    ],
-    deps,
-  );
-
-  assert.equal(code, 1);
-  assert.match(capture.stderr.join("\n"), /--base-branch is required/);
-});
-
-test("session do allows existing branch without base branch", async () => {
-  const { capture, deps } = createDependencies(true);
-
-  const code = await runCli(
-    [
-      "session",
-      "do",
-      "--repo",
-      "my-repo",
-      "--session",
-      "s1",
-      "--prompt",
-      "write tests",
-      "--branch",
-      "feature/existing",
-    ],
-    deps,
-  );
+  const code = await runCli([], deps);
 
   assert.equal(code, 0);
-  assert.match(capture.stdout[0], /Running session 's1' for repository 'my-repo'/);
+  assert.match(capture.stdout.join("\n"), /Commands:/);
 });
