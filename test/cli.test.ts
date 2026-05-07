@@ -43,7 +43,7 @@ test("session init requires repository and session", async () => {
   const code = await runCli(["session", "init", "--repo", "my-repo"], deps);
 
   assert.equal(code, 1);
-  assert.equal(capture.stderr[0], "--repo and --session are required");
+  assert.match(capture.stderr.join("\n"), /required option '--session <session>' not specified/);
 });
 
 test("session do requires base branch when operative branch is missing", async () => {
@@ -66,7 +66,7 @@ test("session do requires base branch when operative branch is missing", async (
   );
 
   assert.equal(code, 1);
-  assert.match(capture.stderr[0], /--base-branch is required/);
+  assert.match(capture.stderr.join("\n"), /--base-branch is required/);
 });
 
 test("session do allows existing operative branch without base branch", async () => {

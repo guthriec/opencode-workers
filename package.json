@@ -27,5 +27,8 @@
   },
   "bin": {
     "oc-work": "dist/src/index.js"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
   }
 }

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { Command, CommanderError } from "commander";
 
 export interface CliDependencies {
   cwd: string;
@@ -27,130 +28,125 @@ const defaultDependencies: CliDependencies = {
   },
 };
 
-function getFlagValue(flags: Record<string, string>, name: string): string | undefined {
-  return flags[name];
-}
-
-function parseFlags(args: string[]): { flags?: Record<string, string>; error?: string } {
-  const flags: Record<string, string> = {};
-
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-
-    if (!token.startsWith("--")) {
-      return { error: `Unexpected argument: ${token}` };
-    }
-
-    const key = token.slice(2);
-    const value = args[index + 1];
-
-    if (!value || value.startsWith("--")) {
-      return { error: `Missing value for --${key}` };
-    }
-
-    flags[key] = value;
-    index += 1;
+function writeOutput(write: (message: string) => void, message: string): void {
+  const formatted = message.replace(/\n$/, "");
+  if (formatted.length > 0) {
+    write(formatted);
   }
-
-  return { flags };
 }
 
-function printHelp(writeStdout: (message: string) => void): void {
-  writeStdout("Usage: oc-work <command>");
-  writeStdout("");
-  writeStdout("Commands:");
-  writeStdout("  serve");
-  writeStdout("  session init --repo <repository> --session <session>");
-  writeStdout("  session list");
-  writeStdout(
-    "  session do --repo <repository> --session <session> --prompt <prompt> --operative-branch <branch> [--base-branch <branch>] [--agent <name>]",
-  );
+function applyExitOverride(command: Command): void {
+  command.exitOverride();
+  for (const subcommand of command.commands) {
+    applyExitOverride(subcommand);
+  }
+}
+
+function createProgram(dependencies: CliDependencies): Command {
+  const program = new Command();
+
+  program
+    .name("oc-work")
+    .description("An orchestrator for opencode agents")
+    .showHelpAfterError()
+    .configureOutput({
+      writeOut: (message) => {
+        writeOutput(dependencies.writeStdout, message);
+      },
+      writeErr: (message) => {
+        writeOutput(dependencies.writeStderr, message);
+      },
+    });
+
+  program.command("serve").action(() => {
+    dependencies.writeStdout(`Starting opencode-workers service in ${dependencies.cwd}`);
+  });
+
+  const session = program.command("session");
+
+  session.command("list").action(() => {
+    dependencies.writeStdout(`Listing sessions in ${dependencies.cwd} (stub)`);
+  });
+
+  session
+    .command("init")
+    .requiredOption("--repo <repository>")
+    .requiredOption("--session <session>")
+    .action((options: { repo: string; session: string }) => {
+      dependencies.writeStdout(
+        `Initializing session '${options.session}' for repository '${options.repo}' in ${dependencies.cwd} (stub)`,
+      );
+    });
+
+  session
+    .command("do")
+    .requiredOption("--repo <repository>")
+    .requiredOption("--session <session>")
+    .requiredOption("--prompt <prompt>")
+    .requiredOption("--operative-branch <branch>")
+    .option("--base-branch <branch>")
+    .option("--agent <name>")
+    .action(
+      async (options: {
+        repo: string;
+        session: string;
+        prompt: string;
+        operativeBranch: string;
+        baseBranch?: string;
+        agent?: string;
+      }) => {
+        const repositoryPath = path.resolve(dependencies.cwd, options.repo);
+        const branchExists = await dependencies.doesLocalBranchExist(repositoryPath, options.operativeBranch);
+
+        if (!branchExists && !options.baseBranch) {
+          throw new CommanderError(
+            1,
+            "oc-work.baseBranchRequired",
+            `--base-branch is required when operative branch '${options.operativeBranch}' does not exist in '${options.repo}'`,
+          );
+        }
+
+        dependencies.writeStdout(
+          [
+            `Running session '${options.session}' for repository '${options.repo}'`,
+            `prompt='${options.prompt}'`,
+            `operativeBranch='${options.operativeBranch}'`,
+            `baseBranch='${options.baseBranch ?? "(none)"}'`,
+            `agent='${options.agent ?? "(default)"}'`,
+            "(stub)",
+          ].join("; "),
+        );
+      },
+    );
+
+  applyExitOverride(program);
+
+  return program;
 }
 
 export async function runCli(
   argv: string[],
   dependencies: CliDependencies = defaultDependencies,
 ): Promise<number> {
-  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
-    printHelp(dependencies.writeStdout);
+  const program = createProgram(dependencies);
+
+  if (argv.length === 0) {
+    program.outputHelp();
     return 0;
   }
 
-  const [command, subcommand, ...remainingArgs] = argv;
-
-  if (command === "serve") {
-    dependencies.writeStdout(`Starting opencode-workers service in ${dependencies.cwd}`);
+  try {
+    await program.parseAsync(argv, { from: "user" });
     return 0;
-  }
+  } catch (error) {
+    if (error instanceof CommanderError) {
+      if (error.code.startsWith("oc-work.")) {
+        dependencies.writeStderr(error.message);
+      }
+      return error.exitCode;
+    }
 
-  if (command !== "session") {
-    dependencies.writeStderr(`Unknown command: ${command}`);
-    printHelp(dependencies.writeStdout);
+    dependencies.writeStderr(error instanceof Error ? error.message : "Unknown CLI error");
     return 1;
   }
-
-  if (subcommand === "list") {
-    dependencies.writeStdout(`Listing sessions in ${dependencies.cwd} (stub)`);
-    return 0;
-  }
-
-  if (subcommand !== "init" && subcommand !== "do") {
-    dependencies.writeStderr(`Unknown session command: ${subcommand ?? "(none)"}`);
-    printHelp(dependencies.writeStdout);
-    return 1;
-  }
-
-  const parsedFlags = parseFlags(remainingArgs);
-  if (parsedFlags.error || !parsedFlags.flags) {
-    dependencies.writeStderr(parsedFlags.error ?? "Invalid arguments");
-    return 1;
-  }
-
-  const repository = getFlagValue(parsedFlags.flags, "repo");
-  const session = getFlagValue(parsedFlags.flags, "session");
-
-  if (!repository || !session) {
-    dependencies.writeStderr("--repo and --session are required");
-    return 1;
-  }
-
-  if (subcommand === "init") {
-    dependencies.writeStdout(
-      `Initializing session '${session}' for repository '${repository}' in ${dependencies.cwd} (stub)`,
-    );
-    return 0;
-  }
-
-  const prompt = getFlagValue(parsedFlags.flags, "prompt");
-  const operativeBranch = getFlagValue(parsedFlags.flags, "operative-branch");
-  const baseBranch = getFlagValue(parsedFlags.flags, "base-branch");
-  const agent = getFlagValue(parsedFlags.flags, "agent");
-
-  if (!prompt || !operativeBranch) {
-    dependencies.writeStderr("--prompt and --operative-branch are required");
-    return 1;
-  }
-
-  const repositoryPath = path.resolve(dependencies.cwd, repository);
-  const branchExists = await dependencies.doesLocalBranchExist(repositoryPath, operativeBranch);
-
-  if (!branchExists && !baseBranch) {
-    dependencies.writeStderr(
-      `--base-branch is required when operative branch '${operativeBranch}' does not exist in '${repository}'`,
-    );
-    return 1;
-  }
-
-  dependencies.writeStdout(
-    [
-      `Running session '${session}' for repository '${repository}'`,
-      `prompt='${prompt}'`,
-      `operativeBranch='${operativeBranch}'`,
-      `baseBranch='${baseBranch ?? "(none)"}'`,
-      `agent='${agent ?? "(default)"}'`,
-      "(stub)",
-    ].join("; "),
-  );
-
-  return 0;
 }
