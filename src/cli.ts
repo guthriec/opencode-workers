@@ -83,7 +83,7 @@ function createProgram(dependencies: CliDependencies): Command {
     .requiredOption("--repo <repository>")
     .requiredOption("--session <session>")
     .requiredOption("--prompt <prompt>")
-    .requiredOption("--operative-branch <branch>")
+    .requiredOption("--branch <branch>")
     .option("--base-branch <branch>")
     .option("--agent <name>")
     .action(
@@ -91,18 +91,18 @@ function createProgram(dependencies: CliDependencies): Command {
         repo: string;
         session: string;
         prompt: string;
-        operativeBranch: string;
+        branch: string;
         baseBranch?: string;
         agent?: string;
       }) => {
         const repositoryPath = path.resolve(dependencies.cwd, options.repo);
-        const branchExists = await dependencies.doesLocalBranchExist(repositoryPath, options.operativeBranch);
+        const branchExists = await dependencies.doesLocalBranchExist(repositoryPath, options.branch);
 
         if (!branchExists && !options.baseBranch) {
           throw new CommanderError(
             1,
             "oc-work.baseBranchRequired",
-            `--base-branch is required when operative branch '${options.operativeBranch}' does not exist in '${options.repo}'`,
+            `--base-branch is required when branch '${options.branch}' does not exist in '${options.repo}'`,
           );
         }
 
@@ -110,7 +110,7 @@ function createProgram(dependencies: CliDependencies): Command {
           [
             `Running session '${options.session}' for repository '${options.repo}'`,
             `prompt='${options.prompt}'`,
-            `operativeBranch='${options.operativeBranch}'`,
+            `branch='${options.branch}'`,
             `baseBranch='${options.baseBranch ?? "(none)"}'`,
             `agent='${options.agent ?? "(default)"}'`,
             "(stub)",
